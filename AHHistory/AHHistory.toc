@@ -1,0 +1,8 @@
+## Interface: 16001
+## Title: AH History
+## Notes: Records auction house prices over time and shows whether the current price is a good deal.
+## Author: a.turati
+## Version: 0.1.0
+## SavedVariables: AHHistoryDB
+
+AHHistory.lua
