@@ -4,7 +4,8 @@ A World of Warcraft: Forever addon that records auction house prices over time a
 
 ## Features
 
-- **Full auction house scan** with one click: the **Scan prices** button at the bottom of the auction house window (placed next to **CraftProfit Scan** if you use that addon), or `/ahh scan`.
+- **Full auction house scan** with one click: the **Scan prices** button in the bottom-right corner of the auction house window, or `/ahh scan`.
+- **Progress bar** next to the button while scanning: "Waiting for server...", then "Processing x / y", then the number of items recorded. It hides itself a few seconds after the scan ends.
 - **Daily price history** per item: lowest price per unit, median price and quantity listed.
 - **Tooltip info** on any item (bags, bank, auction house, chat links):
 

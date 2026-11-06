@@ -110,6 +110,38 @@ local function Verdict(s)
 end
 
 ---------------------------------------------------------------------------
+-- Scan button state and progress bar
+---------------------------------------------------------------------------
+
+local button, bar
+local barToken = 0   -- bumped on every update so a pending auto-hide is cancelled
+
+local function ShowProgress(done, total, text)
+  if not bar then return end
+  barToken = barToken + 1
+  bar:SetMinMaxValues(0, math.max(total, 1))
+  bar:SetValue(done)
+  bar.text:SetText(text)
+  bar:Show()
+end
+
+-- Shows a final message on a full bar, then hides it after a few seconds.
+local function FinishProgress(text)
+  ShowProgress(1, 1, text)
+  local token = barToken
+  C_Timer.After(5, function()
+    if bar and token == barToken then bar:Hide() end
+  end)
+end
+
+local function SetScanning(state)
+  scanning = state
+  if button then
+    if state then button:Disable() else button:Enable() end
+  end
+end
+
+---------------------------------------------------------------------------
 -- Scanning
 ---------------------------------------------------------------------------
 
@@ -142,7 +174,8 @@ local function ProcessScan(total, getInfo)
       count = count + 1
     end
     realmDB.lastScan = now
-    scanning = false
+    SetScanning(false)
+    FinishProgress(string.format("Done: %d items recorded", count))
     Print(string.format("Scan complete: %d auctions, %d different items recorded.", total, count))
   end
 
@@ -162,6 +195,7 @@ local function ProcessScan(total, getInfo)
       end
     end
     i = last + 1
+    ShowProgress(last, total, string.format("Processing %d / %d", last, total))
     if i <= total then
       C_Timer.After(0, Step)
     else
@@ -189,11 +223,11 @@ local function StartScan()
       Print("Full scan is on cooldown (the server allows one roughly every 15 minutes).")
       return
     end
-    scanning = true
+    SetScanning(true)
     f:RegisterEvent("AUCTION_ITEM_LIST_UPDATE")
     QueryAuctionItems("", nil, nil, 0, false, 0, true)
   elseif C_AuctionHouse and C_AuctionHouse.ReplicateItems then
-    scanning = true
+    SetScanning(true)
     f:RegisterEvent("REPLICATE_ITEM_LIST_UPDATE")
     C_AuctionHouse.ReplicateItems()
   else
@@ -201,13 +235,15 @@ local function StartScan()
     return
   end
 
+  ShowProgress(0, 1, "Waiting for server...")
   Print("Scanning the whole auction house, this can take a few seconds...")
   -- Safety net in case the server never answers.
   C_Timer.After(90, function()
     if scanning then
-      scanning = false
+      SetScanning(false)
       f:UnregisterEvent("AUCTION_ITEM_LIST_UPDATE")
       f:UnregisterEvent("REPLICATE_ITEM_LIST_UPDATE")
+      FinishProgress("Scan timed out")
       Print("Scan timed out. Try again later.")
     end
   end)
@@ -271,43 +307,31 @@ end
 -- Auction house button
 ---------------------------------------------------------------------------
 
-local button
-
--- Looks through a frame's children for a shown button whose label matches pattern.
-local function FindButtonByText(frame, pattern, depth)
-  if depth <= 0 then return nil end
-  for _, child in ipairs({ frame:GetChildren() }) do
-    if child ~= button and child:IsShown() then
-      local text = child.GetText and child:GetText()
-      if type(text) == "string" and text:lower():find(pattern) then return child end
-      local found = FindButtonByText(child, pattern, depth - 1)
-      if found then return found end
-    end
-  end
-end
-
--- Sits right of another addon's "Craft Profit Scan" button when it exists,
--- otherwise at the bottom of the auction house window.
-local function PositionButton()
-  if not button then return end
-  local parent = button:GetParent()
-  local craft = FindButtonByText(parent, "craft%s*profit", 4)
-  button:ClearAllPoints()
-  if craft then
-    button:SetPoint("LEFT", craft, "RIGHT", 4, 0)
-  else
-    button:SetPoint("BOTTOMLEFT", parent, "BOTTOMLEFT", 20, 14)
-  end
-end
-
+-- Scan button in the bottom-right corner of the auction house window,
+-- with the progress bar just to its left.
 local function EnsureButton()
   if button then return end
   local parent = AuctionFrame or AuctionHouseFrame
   if not parent then return end
+
   button = CreateFrame("Button", "AHHistoryScanButton", parent, "UIPanelButtonTemplate")
   button:SetSize(110, 22)
+  button:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -8, 4)
   button:SetText("Scan prices")
   button:SetScript("OnClick", StartScan)
+  if scanning then button:Disable() end
+
+  bar = CreateFrame("StatusBar", "AHHistoryProgressBar", parent)
+  bar:SetSize(220, 18)
+  bar:SetPoint("RIGHT", button, "LEFT", -8, 0)
+  bar:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
+  bar:SetStatusBarColor(0.2, 0.7, 1)
+  bar.bg = bar:CreateTexture(nil, "BACKGROUND")
+  bar.bg:SetAllPoints()
+  bar.bg:SetColorTexture(0, 0, 0, 0.6)
+  bar.text = bar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+  bar.text:SetPoint("CENTER")
+  bar:Hide()
 end
 
 ---------------------------------------------------------------------------
@@ -371,9 +395,6 @@ f:SetScript("OnEvent", function(self, event, arg1)
     self:UnregisterEvent("ADDON_LOADED")
   elseif event == "AUCTION_HOUSE_SHOW" then
     EnsureButton()
-    PositionButton()
-    -- Other addons may add their buttons a moment after the window opens.
-    C_Timer.After(0.5, PositionButton)
     if db.autoScan then C_Timer.After(1, StartScan) end
   elseif event == "AUCTION_ITEM_LIST_UPDATE" then
     self:UnregisterEvent(event)
